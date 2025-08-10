@@ -33,11 +33,21 @@ const realDurationCache = new Map();
 const nsfwEnabled = new Map(); // guild -> boolean
 const userStats = new Map(); // user -> {commandsUsed, favoriteCommand}
 
-client.once('ready', () => {
+client.once('ready', async () => {
     console.log(`🤖 Bot hazır! ${client.user.tag} olarak giriş yapıldı`);
     console.log('🔥 Gelişmiş Stream Sistemi aktif!');
     console.log('🧠 No-Retry AI Modu çalışıyor!');
     console.log('🧹 AI Cache temizlendi');
+    
+    // Windows User-Agent spoofing for play-dl
+    try {
+        await playdl.setToken({
+            useragent: ['Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36']
+        });
+        console.log('🪟 Windows User-Agent ayarlandı (play-dl)');
+    } catch (error) {
+        console.log('⚠️ play-dl User-Agent ayarlanamadı:', error.message);
+    }
 });
 
 // Utility functions
@@ -634,7 +644,18 @@ async function playSong(guild, song) {
                 const stream = ytdl(song.url, { 
                     filter: 'audioonly',
                     quality: 'lowestaudio',
-                    highWaterMark: 1 << 25
+                    highWaterMark: 1 << 25,
+                    requestOptions: {
+                        headers: {
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                            'Accept-Language': 'en-US,en;q=0.9',
+                            'Accept-Encoding': 'gzip, deflate, br',
+                            'DNT': '1',
+                            'Connection': 'keep-alive',
+                            'Upgrade-Insecure-Requests': '1'
+                        }
+                    }
                 });
                 audioStream = { stream: stream, type: StreamType.Arbitrary };
                 streamSource = 'ytdl-core';
@@ -652,6 +673,13 @@ async function playSong(guild, song) {
                         '--youtube-skip-dash-manifest',
                         '--extract-flat',
                         '--no-playlist',
+                        '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                        '--add-header', 'Accept-Language:en-US,en;q=0.9',
+                        '--add-header', 'Accept-Encoding:gzip, deflate, br',
+                        '--add-header', 'DNT:1',
+                        '--add-header', 'Connection:keep-alive',
+                        '--add-header', 'Upgrade-Insecure-Requests:1',
                         song.url
                     ], {
                         stdio: ['ignore', 'pipe', 'pipe']
