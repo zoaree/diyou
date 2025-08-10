@@ -1,30 +1,29 @@
-# 🎵 Discord AI Müzik Botu
+# 🎵 Discord AI Müzik ve Eğlence Botu
 
-## 🚀 Özellikler
-- **No-Retry AI Sistemi**: Şarkılar sadece bir kez çalınır, tekrar deneme yok
-- **Akıllı Şarkı Seçimi**: AI ile en uygun videoları bulur
-- **ASK Loop**: Otomatik sürekli müzik çalma
-- **Modern Embed Mesajları**: Görsel ve bilgilendirici mesajlar
+Akıllı müzik çalma, oyun keşfi ve görsel içerik özelliklerini bir araya getiren modern Discord botu. No-Retry AI müzik sistemi, inline ses kontrolü ve tekrar modu gibi gelişmiş müzik özellikleriyle sunucunuza enerji katar.
 
-## 📋 Komutlar
-- `!askloop` veya `!ask` - ASK playlist'ini başlat
-- `!stop` - Müziği durdur
-- `!skip` veya `!s` - Şarkıyı geç
-- `!ai` - AI analiz raporu
-- `!debug` - Detaylı debug bilgileri
+## 🚀 Öne Çıkan Özellikler
+- Müzik: YouTube’dan oynatma, akıllı seçim (AI), ASK Loop, kuyruk yönetimi, karıştırma, tekrar modu, anlık ses ayarı ve Now Playing
+- Oyun Keşfi: Oyun önerisi, puan ve tür rehberi komutları (TR/EN alias’lar)
+- Görsel/SFW: Panda, tilki, kuş, uzay, doğa, anime/manga görselleri
+- Eğlence: Yazı-tura, zar, espri ve daha fazlası
+- NSFW Yönetimi: Yöneticiler tarafından aç/kapatılabilen içerikler (varsayılan kapalı)
 
-## 🛠️ Kurulum
-1. `npm install` - Bağımlılıkları yükle
-2. `.env` dosyasına Discord token'ını ekle
-3. `npm start` - Botu başlat
+## 🧭 Komutlar (Özet)
+- Müzik: `!play`, `!stop`, `!skip`, `!queue/!kuyruk`, `!shuffle/!karistir`, `!repeat/!tekrar`, `!volume/!ses <0-10>`, `!nowplaying/!np`, `!askloop`
+- Oyun: `!oyunkesfet/!oyunara <kelime>`, `!oyunpuan <oyun>`, `!oyuntur <kategori>`
+- Görsel/SFW: `!panda`, `!fox/!tilki`, `!bird/!kus`, `!space/!uzay`, `!nature/!doga`, `!anime`, `!manga`
+- Yardım: `!help`
 
-## 🎯 No-Retry Sistem
-Bot artık şarkıları tekrar tekrar çalmaz. Her şarkı sadece bir kez çalınır ve sonraki şarkıya geçilir.
+Komutların tam listesi ve açıklamaları için uygulama içi `!help` komutunu kullan.
 
-## 🧠 AI Özellikleri
-- Akıllı video skorlama algoritması
-- Süre analizi ve tahmin sistemi
-- Adaptive learning cache sistemi
-- Real-time completion analizi
+## ⚙️ Yapılandırma
+- Ortam değişkeni: `.env` dosyasında `DISCORD_TOKEN` (Discord Developer Portal’dan alınır)
+- İzinler: Botu davet ederken en azından mesaj gönderme, embed, ses kanalına bağlanma ve konuşma izinlerini ver.
+
+## 📦 Kurulum ve Çalıştırma
+Kurulum, platforma göre detaylı adımlar içerir. Lütfen Kurulum dökümanına göz at:
+
+➡️ Kurulum: KURULUM.md
 
 Made with ❤️ by Kadiroski
