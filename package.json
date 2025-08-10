@@ -1,7 +1,8 @@
 {
   "name": "discord-ultimate-roast-bot",
   "version": "2.0.0",
-  "description": "ULTIMATE Discord müzik botu - Sürekli roast sistemi ile 180+ şarkı",  "main": "index.js",
+  "description": "ULTIMATE Discord müzik botu - Sürekli roast sistemi ile 180+ şarkı",
+  "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
@@ -19,6 +20,7 @@
   "license": "MIT",
   "dependencies": {
     "@discordjs/voice": "^0.16.1",
+    "axios": "^1.11.0",
     "discord.js": "^14.19.3",
     "dotenv": "^16.3.1",
     "ffmpeg-static": "^5.2.0",
