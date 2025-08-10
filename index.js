@@ -6,6 +6,7 @@ const playdl = require('play-dl');
 const { promisify } = require('util');
 const execAsync = promisify(exec);
 const axios = require('axios');
+const ytdl = require('ytdl-core');
 require('dotenv').config();
 
 // Config files
@@ -628,16 +629,28 @@ async function playSong(guild, song) {
             streamSource = 'play-dl';
             lastSourceProvider = 'play-dl';
         } catch (error) {
-            console.log('⚠️ play-dl başarısız, ytdlp deneniyor...', error.message);
+            console.log('⚠️ play-dl başarısız, ytdl-core deneniyor...', error.message);
             try {
-                const { stdout } = await execAsync(`yt-dlp -f "worstaudio" --get-url "${song.url}"`);
-                const directUrl = stdout.trim();
-                audioStream = { stream: directUrl, type: StreamType.Arbitrary };
-                streamSource = 'ytdlp';
-                lastSourceProvider = 'ytdlp';
-            } catch (ytdlpError) {
-                console.error('❌ Her iki stream yöntemi de başarısız:', ytdlpError.message);
-                throw new Error('Stream alınamadı');
+                const stream = ytdl(song.url, { 
+                    filter: 'audioonly',
+                    quality: 'lowestaudio',
+                    highWaterMark: 1 << 25
+                });
+                audioStream = { stream: stream, type: StreamType.Arbitrary };
+                streamSource = 'ytdl-core';
+                lastSourceProvider = 'ytdl-core';
+            } catch (ytdlError) {
+                console.log('⚠️ ytdl-core başarısız, son çare yt-dlp deneniyor...', ytdlError.message);
+                try {
+                    const { stdout } = await execAsync(`yt-dlp -f "worstaudio" --get-url "${song.url}"`);
+                    const directUrl = stdout.trim();
+                    audioStream = { stream: directUrl, type: StreamType.Arbitrary };
+                    streamSource = 'ytdlp';
+                    lastSourceProvider = 'ytdlp';
+                } catch (ytdlpError) {
+                    console.error('❌ Tüm stream yöntemleri başarısız:', ytdlpError.message);
+                    throw new Error('Stream alınamadı');
+                }
             }
         }
 
@@ -671,7 +684,8 @@ async function playSong(guild, song) {
                     earlyRetryDone = true;
                     
                     // Switch to alternative source
-                    const alternativeSource = lastSourceProvider === 'play-dl' ? 'ytdlp' : 'play-dl';
+                    const alternativeSource = lastSourceProvider === 'play-dl' ? 'ytdl-core' : 
+                                            lastSourceProvider === 'ytdl-core' ? 'ytdlp' : 'play-dl';
                     console.log(`🔀 ${lastSourceProvider} -> ${alternativeSource} değişimi yapılıyor...`);
                     
                     setTimeout(() => {
