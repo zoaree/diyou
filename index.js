@@ -7,7 +7,6 @@ const { promisify } = require('util');
 const execAsync = promisify(exec);
 const axios = require('axios');
 const ytdl = require('ytdl-core');
-const youtubedl = require('youtube-dl-exec');
 require('dotenv').config();
 
 // Config files
@@ -641,21 +640,31 @@ async function playSong(guild, song) {
                 streamSource = 'ytdl-core';
                 lastSourceProvider = 'ytdl-core';
             } catch (ytdlError) {
-                console.log('⚠️ ytdl-core başarısız, yt-dlp stream deneniyor...', ytdlError.message);
+                console.log('⚠️ ytdl-core başarısız, yt-dlp pipe deneniyor...', ytdlError.message);
                 try {
-                    const stream = youtubedl(song.url, {
-                        output: '-',
-                        format: 'bestaudio',
-                        noWarnings: true,
-                        noCallHome: true,
-                        noCheckCertificate: true,
-                        preferFreeFormats: true,
-                        youtubeSkipDashManifest: true,
-                        extractFlat: false
+                    const { spawn } = require('child_process');
+                    const ytdlpProcess = spawn('yt-dlp', [
+                        '-f', 'bestaudio',
+                        '-o', '-',
+                        '--no-warnings',
+                        '--no-call-home',
+                        '--no-check-certificate',
+                        '--prefer-free-formats',
+                        '--youtube-skip-dash-manifest',
+                        song.url
+                    ]);
+                    
+                    audioStream = { stream: ytdlpProcess.stdout, type: StreamType.Arbitrary };
+                    streamSource = 'yt-dlp-pipe';
+                    lastSourceProvider = 'yt-dlp-pipe';
+                    
+                    ytdlpProcess.stderr.on('data', (data) => {
+                        console.log('yt-dlp stderr:', data.toString());
                     });
-                    audioStream = { stream: stream, type: StreamType.Arbitrary };
-                    streamSource = 'yt-dlp-stream';
-                    lastSourceProvider = 'yt-dlp-stream';
+                    
+                    ytdlpProcess.on('error', (error) => {
+                        console.error('yt-dlp process error:', error);
+                    });
                 } catch (ytdlpError) {
                     console.error('❌ Tüm stream yöntemleri başarısız:', ytdlpError.message);
                     throw new Error('Stream alınamadı');
@@ -694,7 +703,7 @@ async function playSong(guild, song) {
                     
                     // Switch to alternative source
                     const alternativeSource = lastSourceProvider === 'play-dl' ? 'ytdl-core' : 
-                                            lastSourceProvider === 'ytdl-core' ? 'yt-dlp-stream' : 'play-dl';
+                                            lastSourceProvider === 'ytdl-core' ? 'yt-dlp-pipe' : 'play-dl';
                     console.log(`🔀 ${lastSourceProvider} -> ${alternativeSource} değişimi yapılıyor...`);
                     
                     setTimeout(() => {
