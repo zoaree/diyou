@@ -100,12 +100,16 @@ fi
 node -e "require('discord.js'); console.log('discord.js OK')" >/dev/null 2>&1 || { log "$emoji_err discord.js yüklenemedi"; exit 1; }
 command -v ffmpeg >/dev/null 2>&1 || { log "$emoji_err ffmpeg bulunamadı"; exit 1; }
 
+# ----- Ağ uyumluluk ayarları (IPv4 tercih, proxy temizliği) -----
+export NODE_OPTIONS="--dns-result-order=ipv4first"
+unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy || true
+
 # ----- Başlatma (PM2 tercih) -----
 USE_PM2=1
 if [ "$USE_PM2" = "1" ]; then
   log "$emoji_pm2 PM2 ile başlatılıyor..."
   pm2 delete diyou-bot >/dev/null 2>&1 || true
-  pm2 start index.js --name diyou-bot
+  pm2 start index.js --name diyou-bot --update-env
   pm2 save || true
   # Boot'a ekle (systemd)
   if command -v systemctl >/dev/null 2>&1; then
