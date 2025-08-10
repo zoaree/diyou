@@ -638,17 +638,64 @@ async function playSong(guild, song) {
         if (serverQueue.lastSourceProvider === 'force-yt-dlp') {
             console.log('🚀 410 hatası nedeniyle direkt yt-dlp kullanılıyor...');
             serverQueue.lastSourceProvider = 'yt-dlp-pipe'; // Reset for next time
-            throw new Error('Forcing yt-dlp due to 410 error');
-        }
-        
-        try {
-            console.log('🎮 play-dl ile stream alınıyor...');
-            audioStream = await playdl.stream(song.url, { quality: 1 });
-            streamSource = 'play-dl';
-            serverQueue.lastSourceProvider = 'play-dl';
-        } catch (error) {
-            console.log('⚠️ play-dl başarısız, ytdl-core deneniyor...', error.message);
+            
+            // Directly use yt-dlp
+            const ytdlpProcess = spawn('yt-dlp', [
+                '-f', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio',
+                '-o', '-',
+                '--no-warnings',
+                '--no-call-home',
+                '--no-check-certificate',
+                '--prefer-free-formats',
+                '--youtube-skip-dash-manifest',
+                '--extract-flat',
+                '--no-playlist',
+                '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                '--add-header', 'Accept:text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+                '--add-header', 'Accept-Language:en-US,en;q=0.9',
+                '--add-header', 'Accept-Encoding:gzip, deflate, br',
+                '--add-header', 'DNT:1',
+                '--add-header', 'Connection:keep-alive',
+                '--add-header', 'Upgrade-Insecure-Requests:1',
+                song.url
+            ], {
+                stdio: ['ignore', 'pipe', 'pipe']
+            });
+            
+            if (!ytdlpProcess.pid) {
+                throw new Error('yt-dlp process failed to start');
+            }
+            
+            audioStream = { stream: ytdlpProcess.stdout, type: StreamType.Arbitrary };
+            streamSource = 'yt-dlp-pipe';
+            
+            ytdlpProcess.stderr.on('data', (data) => {
+                const errorMsg = data.toString();
+                if (errorMsg.includes('ERROR') || errorMsg.includes('WARNING')) {
+                    console.log('🔧 yt-dlp:', errorMsg.trim());
+                }
+            });
+            
+            ytdlpProcess.on('error', (error) => {
+                console.error('❌ yt-dlp process error:', error.message);
+            });
+            
+            ytdlpProcess.on('exit', (code) => {
+                if (code !== 0) {
+                    console.log(`🔧 yt-dlp process exited with code: ${code}`);
+                }
+            });
+            
+            console.log('✅ yt-dlp pipe stream başlatıldı (410 retry)');
+        } else {
             try {
+                console.log('🎮 play-dl ile stream alınıyor...');
+                audioStream = await playdl.stream(song.url, { quality: 1 });
+                streamSource = 'play-dl';
+                serverQueue.lastSourceProvider = 'play-dl';
+            } catch (error) {
+                console.log('⚠️ play-dl başarısız, ytdl-core deneniyor...', error.message);
+                try {
                 const stream = ytdl(song.url, { 
                     filter: 'audioonly',
                     quality: 'lowestaudio',
@@ -736,6 +783,7 @@ async function playSong(guild, song) {
                 }
             }
         }
+        }
 
         const resource = createAudioResource(audioStream.stream, {
             inputType: audioStream.type,
@@ -795,7 +843,7 @@ async function playSong(guild, song) {
                 console.error('❌ Audio player hatası:', error);
                 
                 // Check if it's a 410 error (URL expired) and we haven't tried yt-dlp yet
-                if (error.message.includes('Status code: 410') && lastSourceProvider !== 'yt-dlp-pipe') {
+                if (error.message.includes('Status code: 410') && serverQueue.lastSourceProvider !== 'yt-dlp-pipe') {
                     console.log('🔄 410 hatası tespit edildi, yt-dlp ile yeniden denenecek...');
                     
                     // Force yt-dlp for this retry
