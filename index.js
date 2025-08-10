@@ -1,6 +1,6 @@
 const { Client, GatewayIntentBits, EmbedBuilder, PermissionsBitField } = require('discord.js');
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, StreamType, entersState, VoiceConnectionStatus } = require('@discordjs/voice');
-const { exec } = require('child_process');
+const { exec, spawn } = require('child_process');
 const ytSearch = require('youtube-search-api');
 const playdl = require('play-dl');
 const { promisify } = require('util');
@@ -642,29 +642,48 @@ async function playSong(guild, song) {
             } catch (ytdlError) {
                 console.log('⚠️ ytdl-core başarısız, yt-dlp pipe deneniyor...', ytdlError.message);
                 try {
-                    const { spawn } = require('child_process');
                     const ytdlpProcess = spawn('yt-dlp', [
-                        '-f', 'bestaudio',
+                        '-f', 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio',
                         '-o', '-',
                         '--no-warnings',
                         '--no-call-home',
                         '--no-check-certificate',
                         '--prefer-free-formats',
                         '--youtube-skip-dash-manifest',
+                        '--extract-flat',
+                        '--no-playlist',
                         song.url
-                    ]);
+                    ], {
+                        stdio: ['ignore', 'pipe', 'pipe']
+                    });
+                    
+                    // Check if process started successfully
+                    if (!ytdlpProcess.pid) {
+                        throw new Error('yt-dlp process failed to start');
+                    }
                     
                     audioStream = { stream: ytdlpProcess.stdout, type: StreamType.Arbitrary };
                     streamSource = 'yt-dlp-pipe';
                     lastSourceProvider = 'yt-dlp-pipe';
                     
                     ytdlpProcess.stderr.on('data', (data) => {
-                        console.log('yt-dlp stderr:', data.toString());
+                        const errorMsg = data.toString();
+                        if (errorMsg.includes('ERROR') || errorMsg.includes('WARNING')) {
+                            console.log('🔧 yt-dlp:', errorMsg.trim());
+                        }
                     });
                     
                     ytdlpProcess.on('error', (error) => {
-                        console.error('yt-dlp process error:', error);
+                        console.error('❌ yt-dlp process error:', error.message);
                     });
+                    
+                    ytdlpProcess.on('exit', (code) => {
+                        if (code !== 0) {
+                            console.log(`🔧 yt-dlp process exited with code: ${code}`);
+                        }
+                    });
+                    
+                    console.log('✅ yt-dlp pipe stream başlatıldı');
                 } catch (ytdlpError) {
                     console.error('❌ Tüm stream yöntemleri başarısız:', ytdlpError.message);
                     throw new Error('Stream alınamadı');
