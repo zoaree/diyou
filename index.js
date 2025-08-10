@@ -522,7 +522,8 @@ async function handleAskLoop(message, serverQueue) {
                 playing: true,
                 playerListenersSet: false,
                 repeat: false,
-                currentResource: null
+                currentResource: null,
+                lastSourceProvider: null
             };
 
             musicQueue.set(message.guild.id, queueConstruct);
@@ -610,7 +611,7 @@ async function handleSkip(message, serverQueue) {
 // Play song function
 async function playSong(guild, song) {
     const serverQueue = musicQueue.get(guild.id);
-    let lastSourceProvider = null;
+    // lastSourceProvider moved to serverQueue for guild-specific tracking
     let earlyRetryDone = false;
 
     if (!song) {
@@ -634,9 +635,9 @@ async function playSong(guild, song) {
         let streamSource = 'unknown';
         
         // Check if we need to force yt-dlp due to 410 error
-        if (lastSourceProvider === 'force-yt-dlp') {
+        if (serverQueue.lastSourceProvider === 'force-yt-dlp') {
             console.log('🚀 410 hatası nedeniyle direkt yt-dlp kullanılıyor...');
-            lastSourceProvider = 'yt-dlp-pipe'; // Reset for next time
+            serverQueue.lastSourceProvider = 'yt-dlp-pipe'; // Reset for next time
             throw new Error('Forcing yt-dlp due to 410 error');
         }
         
@@ -644,7 +645,7 @@ async function playSong(guild, song) {
             console.log('🎮 play-dl ile stream alınıyor...');
             audioStream = await playdl.stream(song.url, { quality: 1 });
             streamSource = 'play-dl';
-            lastSourceProvider = 'play-dl';
+            serverQueue.lastSourceProvider = 'play-dl';
         } catch (error) {
             console.log('⚠️ play-dl başarısız, ytdl-core deneniyor...', error.message);
             try {
@@ -676,7 +677,7 @@ async function playSong(guild, song) {
                 });
                 audioStream = { stream: stream, type: StreamType.Arbitrary };
                 streamSource = 'ytdl-core';
-                lastSourceProvider = 'ytdl-core';
+                serverQueue.lastSourceProvider = 'ytdl-core';
             } catch (ytdlError) {
                 console.log('⚠️ ytdl-core başarısız, yt-dlp pipe deneniyor...', ytdlError.message);
                 try {
@@ -709,7 +710,7 @@ async function playSong(guild, song) {
                     
                     audioStream = { stream: ytdlpProcess.stdout, type: StreamType.Arbitrary };
                     streamSource = 'yt-dlp-pipe';
-                    lastSourceProvider = 'yt-dlp-pipe';
+                    serverQueue.lastSourceProvider = 'yt-dlp-pipe';
                     
                     ytdlpProcess.stderr.on('data', (data) => {
                         const errorMsg = data.toString();
@@ -766,9 +767,9 @@ async function playSong(guild, song) {
                     earlyRetryDone = true;
                     
                     // Switch to alternative source
-                    const alternativeSource = lastSourceProvider === 'play-dl' ? 'ytdl-core' : 
-                                            lastSourceProvider === 'ytdl-core' ? 'yt-dlp-pipe' : 'play-dl';
-                    console.log(`🔀 ${lastSourceProvider} -> ${alternativeSource} değişimi yapılıyor...`);
+                    const alternativeSource = serverQueue.lastSourceProvider === 'play-dl' ? 'ytdl-core' : 
+                                            serverQueue.lastSourceProvider === 'ytdl-core' ? 'yt-dlp-pipe' : 'play-dl';
+                    console.log(`🔀 ${serverQueue.lastSourceProvider} -> ${alternativeSource} değişimi yapılıyor...`);
                     
                     setTimeout(() => {
                         playSong(guild, song);
@@ -798,13 +799,17 @@ async function playSong(guild, song) {
                     console.log('🔄 410 hatası tespit edildi, yt-dlp ile yeniden denenecek...');
                     
                     // Force yt-dlp for this retry
-                    const originalProvider = lastSourceProvider;
-                    lastSourceProvider = 'force-yt-dlp';
+                    const originalProvider = serverQueue.lastSourceProvider;
+                    serverQueue.lastSourceProvider = 'force-yt-dlp';
                     
-                    setTimeout(() => {
-                        playSong(guild, song);
-                    }, 1000);
-                    return;
+                    // Get current song from queue
+                    const currentSong = serverQueue.songs[0];
+                    if (currentSong) {
+                        setTimeout(() => {
+                            playSong(guild, currentSong);
+                        }, 1000);
+                        return;
+                    }
                 }
                 
                 // If yt-dlp also failed or other errors, skip to next song
@@ -898,7 +903,8 @@ async function handlePlay(message, query, serverQueue) {
                 playing: true,
                 playerListenersSet: false,
                 repeat: false,
-                currentResource: null
+                currentResource: null,
+                lastSourceProvider: null
             };
 
             musicQueue.set(message.guild.id, queueConstruct);
@@ -1026,7 +1032,8 @@ async function handleTestSong(message, query, serverQueue) {
                 playing: true,
                 playerListenersSet: false,
                 repeat: false,
-                currentResource: null
+                currentResource: null,
+                lastSourceProvider: null
             };
 
             musicQueue.set(message.guild.id, queueConstruct);
