@@ -633,6 +633,13 @@ async function playSong(guild, song) {
         let audioStream = null;
         let streamSource = 'unknown';
         
+        // Check if we need to force yt-dlp due to 410 error
+        if (lastSourceProvider === 'force-yt-dlp') {
+            console.log('🚀 410 hatası nedeniyle direkt yt-dlp kullanılıyor...');
+            lastSourceProvider = 'yt-dlp-pipe'; // Reset for next time
+            throw new Error('Forcing yt-dlp due to 410 error');
+        }
+        
         try {
             console.log('🎮 play-dl ile stream alınıyor...');
             audioStream = await playdl.stream(song.url, { quality: 1 });
@@ -785,6 +792,22 @@ async function playSong(guild, song) {
 
             serverQueue.player.on('error', error => {
                 console.error('❌ Audio player hatası:', error);
+                
+                // Check if it's a 410 error (URL expired) and we haven't tried yt-dlp yet
+                if (error.message.includes('Status code: 410') && lastSourceProvider !== 'yt-dlp-pipe') {
+                    console.log('🔄 410 hatası tespit edildi, yt-dlp ile yeniden denenecek...');
+                    
+                    // Force yt-dlp for this retry
+                    const originalProvider = lastSourceProvider;
+                    lastSourceProvider = 'force-yt-dlp';
+                    
+                    setTimeout(() => {
+                        playSong(guild, song);
+                    }, 1000);
+                    return;
+                }
+                
+                // If yt-dlp also failed or other errors, skip to next song
                 serverQueue.songs.shift();
                 playSong(guild, serverQueue.songs[0]);
             });
