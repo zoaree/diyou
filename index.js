@@ -6,8 +6,22 @@ const playdl = require('play-dl');
 const { promisify } = require('util');
 const execAsync = promisify(exec);
 const axios = require('axios');
-const ytdl = require('ytdl-core');
+const ytdl = require('@distube/ytdl-core');
 require('dotenv').config();
+
+// Modern ytdl-core agent with Linux-optimized settings
+const ytdlAgent = ytdl.createAgent(undefined, {
+    pipelining: 5,
+    maxRedirections: 3,
+    localAddress: undefined, // Let system choose best IP
+    keepAlive: true,
+    keepAliveMsecs: 1000,
+    maxSockets: 15,
+    maxFreeSockets: 10,
+    timeout: 30000,
+    headersTimeout: 30000,
+    bodyTimeout: 30000
+});
 
 // Config files
 const playlists = require('./config/playlists');
@@ -38,6 +52,8 @@ client.once('ready', async () => {
     console.log('🔥 Gelişmiş Stream Sistemi aktif!');
     console.log('🧠 No-Retry AI Modu çalışıyor!');
     console.log('🧹 AI Cache temizlendi');
+    console.log('🛡️ Gelişmiş 410 hata koruması aktif (@distube/ytdl-core + multi-fallback)');
+    console.log('🔄 Fallback sırası: play-dl → @distube/ytdl-core → yt-dlp → alternatif client');
     
     // Windows User-Agent spoofing for play-dl
     try {
@@ -634,8 +650,41 @@ async function playSong(guild, song) {
         let audioStream = null;
         let streamSource = 'unknown';
         
+        // Check if we need to force alternative ytdl-core client due to 410 error
+        if (serverQueue.lastSourceProvider === 'force-ytdl-fallback') {
+            console.log('🚀 410 hatası nedeniyle alternatif ytdl-core client kullanılıyor...');
+            serverQueue.lastSourceProvider = 'ytdl-core-fallback'; // Reset for next time
+            
+            // Use alternative ytdl-core configuration with different client
+            const stream = ytdl(song.url, {
+                filter: 'audioonly',
+                quality: 'lowestaudio',
+                highWaterMark: 1 << 25,
+                dlChunkSize: 0,
+                begin: 0,
+                liveBuffer: 40000,
+                agent: ytdlAgent,
+                playerClients: ['ANDROID', 'WEB_EMBEDDED', 'IOS'], // Different client order
+                requestOptions: {
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+                        'Accept': '*/*',
+                        'Accept-Language': 'en-US,en;q=0.5',
+                        'Accept-Encoding': 'gzip, deflate',
+                        'Connection': 'keep-alive',
+                        'Sec-Fetch-Dest': 'empty',
+                        'Sec-Fetch-Mode': 'cors',
+                        'Sec-Fetch-Site': 'cross-site'
+                    }
+                }
+            });
+            audioStream = { stream: stream, type: StreamType.Arbitrary };
+            streamSource = 'ytdl-core-fallback';
+            
+            console.log('✅ Alternatif ytdl-core client stream başlatıldı (410 retry)');
+        }
         // Check if we need to force yt-dlp due to 410 error
-        if (serverQueue.lastSourceProvider === 'force-yt-dlp') {
+        else if (serverQueue.lastSourceProvider === 'force-yt-dlp') {
             console.log('🚀 410 hatası nedeniyle direkt yt-dlp kullanılıyor...');
             serverQueue.lastSourceProvider = 'yt-dlp-pipe'; // Reset for next time
             
@@ -696,14 +745,15 @@ async function playSong(guild, song) {
             } catch (error) {
                 console.log('⚠️ play-dl başarısız, ytdl-core deneniyor...', error.message);
                 try {
-                const stream = ytdl(song.url, { 
+                const stream = ytdl(song.url, {
                     filter: 'audioonly',
                     quality: 'lowestaudio',
                     highWaterMark: 1 << 25,
                     dlChunkSize: 0,
                     begin: 0,
                     liveBuffer: 40000,
-                    fflags: '+genpts',
+                    agent: ytdlAgent,
+                    playerClients: ['WEB_EMBEDDED', 'WEB', 'ANDROID', 'IOS'],
                     requestOptions: {
                         headers: {
                             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -717,9 +767,7 @@ async function playSong(guild, song) {
                             'Sec-Fetch-Mode': 'navigate',
                             'Sec-Fetch-Site': 'none',
                             'Cache-Control': 'max-age=0'
-                        },
-                        timeout: 30000,
-                        maxRedirects: 5
+                        }
                     }
                 });
                 audioStream = { stream: stream, type: StreamType.Arbitrary };
@@ -842,21 +890,35 @@ async function playSong(guild, song) {
             serverQueue.player.on('error', error => {
                 console.error('❌ Audio player hatası:', error);
                 
-                // Check if it's a 410 error (URL expired) and we haven't tried yt-dlp yet
-                if (error.message.includes('Status code: 410') && serverQueue.lastSourceProvider !== 'yt-dlp-pipe') {
-                    console.log('🔄 410 hatası tespit edildi, yt-dlp ile yeniden denenecek...');
+                // Enhanced 410 error handling with multiple fallback strategies
+                if (error.message.includes('Status code: 410')) {
+                    console.log('🔄 410 hatası tespit edildi, gelişmiş fallback sistemi başlatılıyor...');
                     
-                    // Force yt-dlp for this retry
-                    const originalProvider = serverQueue.lastSourceProvider;
-                    serverQueue.lastSourceProvider = 'force-yt-dlp';
-                    
-                    // Get current song from queue
-                    const currentSong = serverQueue.songs[0];
-                    if (currentSong) {
-                        setTimeout(() => {
-                            playSong(guild, currentSong);
-                        }, 1000);
-                        return;
+                    // Strategy 1: Try yt-dlp if not already used
+                    if (serverQueue.lastSourceProvider !== 'yt-dlp-pipe') {
+                        console.log('🎯 Strateji 1: yt-dlp ile yeniden deneniyor...');
+                        serverQueue.lastSourceProvider = 'force-yt-dlp';
+                        
+                        const currentSong = serverQueue.songs[0];
+                        if (currentSong) {
+                            setTimeout(() => {
+                                playSong(guild, currentSong);
+                            }, 1000);
+                            return;
+                        }
+                    }
+                    // Strategy 2: Try alternative ytdl-core client if yt-dlp failed
+                    else if (serverQueue.lastSourceProvider === 'yt-dlp-pipe') {
+                        console.log('🎯 Strateji 2: Alternatif ytdl-core client ile deneniyor...');
+                        serverQueue.lastSourceProvider = 'force-ytdl-fallback';
+                        
+                        const currentSong = serverQueue.songs[0];
+                        if (currentSong) {
+                            setTimeout(() => {
+                                playSong(guild, currentSong);
+                            }, 1500);
+                            return;
+                        }
                     }
                 }
                 
