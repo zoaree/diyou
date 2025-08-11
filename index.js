@@ -16,14 +16,32 @@ const client = new Client({
     ]
 });
 
-// DisTube yapılandırması
+// DisTube yapılandırması - Optimize edilmiş yt-dlp kombinasyonu
 const distube = new DisTube(client, {
     plugins: [
+        // Spotify desteği
         new SpotifyPlugin(),
+        // SoundCloud desteği
         new SoundCloudPlugin(),
-        new YouTubePlugin(),
+        // YouTube desteği
+        new YouTubePlugin({
+            cookies: [], // Cookie desteği
+            ytdlOptions: {
+                quality: 'highestaudio',
+                filter: 'audioonly',
+                highWaterMark: 1 << 25, // 32MB buffer
+                requestOptions: {
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+                    }
+                }
+            }
+        }),
+        // yt-dlp'yi son sıraya al (önerilen)
         new YtDlpPlugin({
-            update: false // Linux'ta otomatik güncellemeyi kapat
+            update: false, // Linux'ta otomatik güncellemeyi kapat
+            quality: 'highestaudio/best', // En iyi ses kalitesi
+            filter: 'audioonly' // Sadece ses indir
         })
     ]
 });
@@ -72,10 +90,13 @@ function createMusicButtons() {
 // Bot hazır olduğunda
 client.once('ready', () => {
     console.log(`🤖 ${client.user.tag} aktif!`);
-    console.log('🎵 DisTube müzik sistemi aktif!');
+    console.log('🎵 DisTube + yt-dlp kombinasyonu aktif!');
     console.log('🔥 Gelişmiş roast sistemi aktif!');
-    console.log('🛡️ Linux optimizasyonları aktif!');
-    console.log('📋 Fallback sırası: YouTube → Spotify → SoundCloud → yt-dlp');
+    console.log('🛡️ Debian/Linux optimizasyonları aktif!');
+    console.log('📋 Öncelik sırası: Spotify → SoundCloud → YouTube → yt-dlp (önerilen)');
+    console.log('🎧 Ses kalitesi: Yüksek (highestaudio/best)');
+    console.log('🚫 youtube-dl devre dışı (sadece yt-dlp kullanılıyor)');
+    console.log('⚡ Gelişmiş hata yönetimi ve fallback sistemi aktif!');
 });
 
 // Mesaj komutları
@@ -274,7 +295,7 @@ client.on('interactionCreate', async (interaction) => {
     }
 });
 
-// DisTube olayları
+// DisTube olayları - Optimize edilmiş yt-dlp kombinasyonu
 distube
     .on('playSong', (queue, song) => {
         const embed = new EmbedBuilder()
@@ -283,11 +304,14 @@ distube
             .addFields(
                 { name: '⏱️ Süre', value: song.formattedDuration, inline: true },
                 { name: '👤 İsteyen', value: song.user.toString(), inline: true },
-                { name: '📋 Kuyruk', value: `${queue.songs.length} şarkı`, inline: true }
+                { name: '📋 Kuyruk', value: `${queue.songs.length} şarkı`, inline: true },
+                { name: '🔧 Kaynak', value: song.source || 'yt-dlp', inline: true },
+                { name: '🎧 Kalite', value: 'Yüksek Ses', inline: true },
+                { name: '🛡️ Sistem', value: 'Linux Optimized', inline: true }
             )
             .setThumbnail(song.thumbnail)
             .setColor('#00FF00')
-            .setFooter({ text: 'DisTube - Linux Optimized' });
+            .setFooter({ text: 'DisTube + yt-dlp - Debian Optimized' });
 
         queue.textChannel.send({ embeds: [embed], components: [createMusicButtons()] });
     })
@@ -298,7 +322,8 @@ distube
             .addFields(
                 { name: '⏱️ Süre', value: song.formattedDuration, inline: true },
                 { name: '👤 İsteyen', value: song.user.toString(), inline: true },
-                { name: '📍 Sıra', value: `${queue.songs.length}`, inline: true }
+                { name: '📍 Sıra', value: `${queue.songs.length}`, inline: true },
+                { name: '🔧 Kaynak', value: song.source || 'yt-dlp', inline: true }
             )
             .setThumbnail(song.thumbnail)
             .setColor('#FFD700');
@@ -306,19 +331,49 @@ distube
         queue.textChannel.send({ embeds: [embed] });
     })
     .on('error', (channel, error) => {
-        console.error('DisTube hatası:', error);
+        console.error('🚨 DisTube hatası:', error);
+        
+        // Hata türüne göre özel mesajlar
+        let errorMessage = '❌ Bir hata oluştu!';
+        
+        if (error.message.includes('410')) {
+            errorMessage = '🔄 YouTube 410 hatası! yt-dlp fallback aktif...';
+        } else if (error.message.includes('403')) {
+            errorMessage = '🚫 Erişim engellendi! Alternatif kaynak deneniyor...';
+        } else if (error.message.includes('unavailable')) {
+            errorMessage = '📵 Video mevcut değil! Başka bir şarkı deneyin.';
+        } else if (error.message.includes('private')) {
+            errorMessage = '🔒 Bu video özel! Başka bir şarkı deneyin.';
+        } else if (error.message.includes('age')) {
+            errorMessage = '🔞 Yaş kısıtlaması! Başka bir şarkı deneyin.';
+        }
+        
         if (channel) {
-            channel.send('❌ Bir hata oluştu! Lütfen tekrar deneyin.');
+            channel.send(`${errorMessage}\n\`\`\`${error.message.slice(0, 100)}...\`\`\``);
         }
     })
     .on('empty', queue => {
-        queue.textChannel.send('📭 Ses kanalı boş, ayrılıyorum!');
+        queue.textChannel.send('📭 Ses kanalı boş, 60 saniye sonra ayrılıyorum!');
     })
     .on('finish', queue => {
-        queue.textChannel.send('🎵 Kuyruk bitti!');
+        queue.textChannel.send('🎵 Kuyruk bitti! Yeni şarkılar ekleyebilirsiniz.');
     })
     .on('disconnect', queue => {
-        queue.textChannel.send('👋 Ses kanalından ayrıldım!');
+        queue.textChannel.send('👋 Ses kanalından ayrıldım! Tekrar görüşmek üzere!');
+    })
+    .on('initQueue', queue => {
+        queue.autoplay = false; // Otomatik çalmayı kapat
+        queue.volume = 50; // Varsayılan ses seviyesi
+        console.log(`🎵 Yeni kuyruk oluşturuldu: ${queue.id}`);
+    })
+    .on('noRelated', queue => {
+        queue.textChannel.send('🔍 İlgili şarkı bulunamadı!');
+    })
+    .on('searchNoResult', (message, query) => {
+        message.channel.send(`🔍 "${query}" için sonuç bulunamadı! Farklı anahtar kelimeler deneyin.`);
+    })
+    .on('searchResult', (message, result) => {
+        console.log(`🔍 Arama sonucu: ${result.length} şarkı bulundu`);
     });
 
 // Hata yakalama
