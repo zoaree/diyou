@@ -245,17 +245,49 @@ client.on('messageCreate', async (message) => {
         case 'clear':
         case 'temizle':
         case 'reset':
+        case 'fix':
             try {
                 const queue = distube.getQueue(message.guild);
                 if (queue) {
-                    distube.stop(message.guild);
-                    message.reply('🧹 Queue temizlendi ve müzik durduruldu!');
+                    console.log(`🔧 Manuel queue temizleme başlatılıyor: ${message.guild.id}`);
+                    
+                    // Voice connection'ı kapat
+                    if (queue.voice && queue.voice.connection) {
+                        try {
+                            queue.voice.connection.destroy();
+                            console.log('🔌 Voice connection kapatıldı');
+                        } catch (voiceError) {
+                            console.error('Voice connection kapatma hatası:', voiceError);
+                        }
+                    }
+                    
+                    // DisTube stop
+                    try {
+                        distube.stop(message.guild);
+                        console.log('⏹️ DisTube stop çalıştırıldı');
+                    } catch (stopError) {
+                        console.error('DisTube stop hatası:', stopError);
+                    }
+                    
+                    // Manuel queue temizleme
+                    try {
+                        queue.stopped = true;
+                        queue.playing = false;
+                        queue.paused = false;
+                        queue.songs = [];
+                        queue.previousSongs = [];
+                        console.log('🧹 Manuel queue temizleme tamamlandı');
+                    } catch (manualError) {
+                        console.error('Manuel temizleme hatası:', manualError);
+                    }
+                    
+                    message.reply('🧹 Queue tamamen temizlendi ve sistem sıfırlandı!');
                 } else {
                     message.reply('❌ Temizlenecek queue yok!');
                 }
             } catch (error) {
                 console.error('Queue temizleme hatası:', error);
-                message.reply('❌ Queue temizleme hatası!');
+                message.reply('❌ Queue temizleme hatası! Botu yeniden başlatmayı deneyin.');
             }
             break;
 
@@ -294,7 +326,7 @@ client.on('messageCreate', async (message) => {
                 .setColor('#FF6B6B')
                 .addFields(
                     { name: '🎵 Müzik Komutları', value: '`!play <şarkı>` - Şarkı çal\n`!pause` - Duraklat\n`!resume` - Devam et\n`!skip` - Geç\n`!stop` - Durdur\n`!queue` - Kuyruğu göster\n`!volume <0-100>` - Ses seviyesi', inline: true },
-                    { name: '🔧 Sistem Komutları', value: '`!clear` - Queue temizle\n`!status` - Bot durumu\n`!help` - Bu yardım menüsü', inline: true },
+                    { name: '🔧 Sistem Komutları', value: '`!clear` / `!fix` - Queue temizle\n`!status` - Bot durumu\n`!help` - Bu yardım menüsü', inline: true },
                     { name: '🔥 Özellikler', value: '• YouTube, Spotify, SoundCloud desteği\n• Otomatik roast sistemi\n• Buton kontrolleri\n• Linux optimizasyonu\n• Gelişmiş hata yönetimi', inline: true }
                 )
                 .setFooter({ text: 'DisTube v5.0.7 - Linux Optimized' });
@@ -389,13 +421,44 @@ distube
     .on('error', (channel, error) => {
         console.error('🚨 DisTube hatası:', error);
         
-        // Queue durumunu kontrol et ve temizle
+        // Queue durumunu kontrol et ve agresif temizleme
         if (error.queue) {
             try {
                 const queue = error.queue;
-                if (queue.songs.length === 0 && queue.playing) {
-                    console.log('🔧 Boş queue tespit edildi, durduruluyor...');
-                    distube.stop(queue.id);
+                console.log(`🔍 Queue durumu: songs=${queue.songs.length}, playing=${queue.playing}, stopped=${queue.stopped}`);
+                
+                // Boş queue ama çalıyor durumunda
+                if (queue.songs.length === 0 && (queue.playing || !queue.stopped)) {
+                    console.log('🔧 Boş queue tespit edildi, agresif temizleme başlatılıyor...');
+                    
+                    // Önce voice connection'ı kontrol et
+                    if (queue.voice && queue.voice.connection) {
+                        try {
+                            queue.voice.connection.destroy();
+                            console.log('🔌 Voice connection kapatıldı');
+                        } catch (voiceError) {
+                            console.error('Voice connection kapatma hatası:', voiceError);
+                        }
+                    }
+                    
+                    // Queue'yu tamamen temizle
+                    try {
+                        distube.stop(queue.id);
+                        console.log('⏹️ Queue durduruldu');
+                    } catch (stopError) {
+                        console.error('Queue durdurma hatası:', stopError);
+                        
+                        // Manuel queue temizleme
+                        try {
+                            queue.stopped = true;
+                            queue.playing = false;
+                            queue.songs = [];
+                            queue.previousSongs = [];
+                            console.log('🧹 Manuel queue temizleme tamamlandı');
+                        } catch (manualError) {
+                            console.error('Manuel temizleme hatası:', manualError);
+                        }
+                    }
                 }
             } catch (queueError) {
                 console.error('Queue temizleme hatası:', queueError);
@@ -416,9 +479,9 @@ distube
         } else if (error.message.includes('age')) {
             errorMessage = '🔞 Yaş kısıtlaması! Başka bir şarkı deneyin.';
         } else if (error.message.includes('stream')) {
-            errorMessage = '🌊 Stream hatası! Şarkı tekrar başlatılıyor...';
+            errorMessage = '🌊 Stream hatası! Queue temizleniyor...';
         } else if (error.message.includes('queue')) {
-            errorMessage = '📋 Queue hatası! Sistem temizleniyor...';
+            errorMessage = '📋 Queue hatası! Sistem sıfırlanıyor...';
         }
         
         if (channel) {
@@ -457,6 +520,45 @@ process.on('unhandledRejection', error => {
 process.on('uncaughtException', error => {
     console.error('Yakalanmamış istisna:', error);
 });
+
+// Periyodik queue kontrolü (her 30 saniyede bir)
+setInterval(() => {
+    try {
+        const queues = distube.queues.collection;
+        queues.forEach((queue, guildId) => {
+            // Boş queue ama çalıyor durumunu kontrol et
+            if (queue.songs.length === 0 && (queue.playing || !queue.stopped)) {
+                console.log(`🔧 [${guildId}] Periyodik kontrol: Boş queue tespit edildi, temizleniyor...`);
+                
+                try {
+                    // Voice connection'ı kapat
+                    if (queue.voice && queue.voice.connection) {
+                        queue.voice.connection.destroy();
+                    }
+                    
+                    // Queue'yu durdur
+                    distube.stop(guildId);
+                    console.log(`✅ [${guildId}] Queue başarıyla temizlendi`);
+                } catch (cleanupError) {
+                    console.error(`❌ [${guildId}] Queue temizleme hatası:`, cleanupError);
+                    
+                    // Manuel temizleme
+                    try {
+                        queue.stopped = true;
+                        queue.playing = false;
+                        queue.songs = [];
+                        queue.previousSongs = [];
+                        console.log(`🧹 [${guildId}] Manuel temizleme tamamlandı`);
+                    } catch (manualError) {
+                        console.error(`❌ [${guildId}] Manuel temizleme hatası:`, manualError);
+                    }
+                }
+            }
+        });
+    } catch (intervalError) {
+        console.error('Periyodik kontrol hatası:', intervalError);
+    }
+}, 30000); // 30 saniye
 
 // Bot'u başlat
 client.login(process.env.DISCORD_TOKEN);
