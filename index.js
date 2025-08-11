@@ -247,51 +247,82 @@ client.on('messageCreate', async (message) => {
         case 'reset':
         case 'fix':
         case 'destroy':
+        case 'nuke':
             try {
                 const guildId = message.guild.id;
-                console.log(`🔥 Agresif manuel temizleme başlatılıyor: ${guildId}`);
+                console.log(`💥 ULTRA AGRESİF TEMİZLEME BAŞLATIYOR: ${guildId}`);
                 
-                // Voice connection'ı zorla kapat
-                const voiceConnection = distube.voices.get(guildId);
-                if (voiceConnection) {
-                    try {
-                        if (voiceConnection.connection) {
-                            voiceConnection.connection.destroy();
-                        }
-                        voiceConnection.audioPlayer.stop(true);
-                        console.log('🔌 Voice connection zorla kapatıldı');
-                    } catch (voiceError) {
-                        console.error('Voice kapatma hatası:', voiceError);
-                    }
-                }
-                
-                // Queue'yu collection'dan tamamen sil
+                // 1. Bot'u voice channel'dan zorla ayır
                 try {
-                    distube.queues.collection.delete(guildId);
-                    distube.voices.collection.delete(guildId);
-                    console.log('🗑️ Queue ve Voice collection\'dan silindi');
-                } catch (deleteError) {
-                    console.error('Collection silme hatası:', deleteError);
-                }
-                
-                // Guild'deki tüm voice state'leri temizle
-                try {
-                    const guild = message.guild;
-                    const botMember = guild.members.cache.get(message.client.user.id);
-                    if (botMember && botMember.voice.channel) {
+                    const botMember = message.guild.members.cache.get(client.user.id);
+                    if (botMember?.voice?.channel) {
                         await botMember.voice.disconnect();
-                        console.log('🔇 Bot voice channel\'dan ayrıldı');
+                        console.log('🔌 Bot voice channel\'dan zorla ayrıldı');
                     }
                 } catch (disconnectError) {
                     console.error('Voice disconnect hatası:', disconnectError);
                 }
                 
-                console.log('✅ Agresif manuel temizleme tamamlandı');
-                message.reply('🔥 Sistem tamamen yok edildi ve sıfırlandı! Artık yeni müzik çalabilirsiniz.');
+                // 2. Voice connection'ı tamamen yok et
+                try {
+                    const voiceConnection = distube.voices.get(guildId);
+                    if (voiceConnection) {
+                        if (voiceConnection.connection) {
+                            voiceConnection.connection.destroy();
+                        }
+                        if (voiceConnection.audioPlayer) {
+                            voiceConnection.audioPlayer.stop(true);
+                        }
+                        console.log('💀 Voice connection tamamen yok edildi');
+                    }
+                } catch (voiceError) {
+                    console.error('Voice yok etme hatası:', voiceError);
+                }
                 
-            } catch (error) {
-                console.error('Agresif temizleme hatası:', error);
-                message.reply('❌ Kritik temizleme hatası! Botu yeniden başlatın.');
+                // 3. DisTube stop (eğer mümkünse)
+                try {
+                    await distube.stop(message);
+                    console.log('⏹️ DisTube stop çalıştırıldı');
+                } catch (stopError) {
+                    console.error('DisTube stop hatası (normal):', stopError);
+                }
+                
+                // 4. Collection'lardan zorla sil
+                try {
+                    distube.queues.collection.delete(guildId);
+                    distube.voices.collection.delete(guildId);
+                    console.log('🗑️ Collection\'lardan zorla silindi');
+                } catch (deleteError) {
+                    console.error('Collection silme hatası:', deleteError);
+                }
+                
+                // 5. Garbage collection zorla çalıştır
+                try {
+                    if (global.gc) {
+                        global.gc();
+                        console.log('🧹 Garbage collection çalıştırıldı');
+                    }
+                } catch (gcError) {
+                    console.error('GC hatası:', gcError);
+                }
+                
+                // 6. 1 saniye bekle ve tekrar temizle
+                setTimeout(() => {
+                    try {
+                        distube.queues.collection.delete(guildId);
+                        distube.voices.collection.delete(guildId);
+                        console.log('🔄 Gecikmiş temizleme tamamlandı');
+                    } catch (delayedError) {
+                        console.error('Gecikmiş temizleme hatası:', delayedError);
+                    }
+                }, 1000);
+                
+                console.log('💥 ULTRA AGRESİF TEMİZLEME TAMAMLANDI');
+                message.reply('💥 **ULTRA TEMİZLEME TAMAMLANDI!**\n🔥 Sistem tamamen nuke edildi!\n⚡ Tüm bağlantılar zorla kesildi!\n🎵 Artık yeni müzik çalabilirsiniz!');
+                
+            } catch (ultraError) {
+                console.error('❌ ULTRA TEMİZLEME HATASI:', ultraError);
+                message.reply('💀 **KRİTİK HATA!** Ultra temizleme başarısız! Botu yeniden başlatın!');
             }
             break;
 
@@ -325,15 +356,21 @@ client.on('messageCreate', async (message) => {
 
         case 'help':
         case 'yardım':
+        case 'komutlar':
             const helpEmbed = new EmbedBuilder()
-                .setTitle('🎵 DisTube Müzik Bot Komutları')
                 .setColor('#FF6B6B')
+                .setTitle('🎵 Aşkolik Bot - Ultra Agresif Sistem')
+                .setDescription('**Müzik komutları ve ultra güçlü özellikler:**')
                 .addFields(
-                    { name: '🎵 Müzik Komutları', value: '`!play <şarkı>` - Şarkı çal\n`!pause` - Duraklat\n`!resume` - Devam et\n`!skip` - Geç\n`!stop` - Durdur\n`!queue` - Kuyruğu göster\n`!volume <0-100>` - Ses seviyesi', inline: true },
-                    { name: '🔧 Sistem Komutları', value: '`!clear` / `!fix` / `!destroy` - Agresif temizleme\n`!status` - Bot durumu\n`!help` - Bu yardım menüsü', inline: true },
-                    { name: '🔥 Özellikler', value: '• YouTube, Spotify, SoundCloud desteği\n• Otomatik roast sistemi\n• Agresif queue temizleme (20s)\n• Linux optimizasyonu\n• Gelişmiş hata yönetimi', inline: true }
+                    { name: '🎵 Temel Komutlar', value: '`!play <şarkı>` - Müzik çal\n`!skip` - Sonraki şarkı\n`!stop` - Müziği durdur\n`!pause` - Duraklat\n`!resume` - Devam ettir', inline: true },
+                    { name: '📋 Queue Komutları', value: '`!queue` - Sırayı göster\n`!volume <0-100>` - Ses seviyesi', inline: true },
+                    { name: '💥 Ultra Temizleme', value: '`!clear` - Temizle\n`!fix` - Düzelt\n`!destroy` - Yok et\n`!nuke` - Nuke et\n`!reset` - Sıfırla\n`!temizle` - Türkçe temizle', inline: true },
+                    { name: '🔧 Sistem', value: '`!status` - Bot durumu\n`!help` - Bu menü', inline: true },
+                    { name: '💥 Ultra Agresif Özellikler', value: '• **Ultra Error Handler** - Otomatik queue yok etme\n• **Ultra Periodic Control** - Her 15 saniyede agresif kontrol\n• **Ultra Cleanup Commands** - 6 farklı temizleme komutu\n• **Force Disconnect** - Zorla voice ayrılma\n• **Garbage Collection** - Bellek temizleme', inline: false },
+                    { name: '⚡ Teknik Özellikler', value: '• Spotify, SoundCloud, YouTube desteği\n• Yüksek kalite ses (highestaudio)\n• DisTube + yt-dlp kombinasyonu\n• Debian/Linux optimizasyonları\n• Gelişmiş fallback sistemi\n• Otomatik roast sistemi', inline: false }
                 )
-                .setFooter({ text: 'DisTube v5.0.7 - Linux Optimized' });
+                .setFooter({ text: 'Aşkolik Bot - Ultra Agresif Müzik Sistemi v2.0' })
+                .setTimestamp();
             
             message.reply({ embeds: [helpEmbed] });
             break;
@@ -422,67 +459,79 @@ distube
 
         queue.textChannel.send({ embeds: [embed] });
     })
-    .on('error', (channel, error) => {
+    .on('error', async (channel, error) => {
         console.error('🚨 DisTube hatası:', error);
         
-        // Agresif queue temizleme
         try {
             const guildId = channel.guild.id;
-            console.log(`🔥 Agresif queue temizleme başlatılıyor: ${guildId}`);
+            console.log(`💥 ULTRA AGRESİF TEMİZLEME BAŞLATIYOR: ${guildId}`);
             
-            // Tüm voice connection'ları kapat
-            const voiceConnection = distube.voices.get(guildId);
-            if (voiceConnection) {
-                try {
+            // 1. Tüm voice bağlantılarını zorla kes
+            try {
+                const guild = channel.guild;
+                const botMember = guild.members.cache.get(channel.client.user.id);
+                if (botMember?.voice?.channel) {
+                    await botMember.voice.disconnect();
+                    console.log('🔌 Bot voice channel\'dan zorla ayrıldı');
+                }
+            } catch (disconnectError) {
+                console.error('Voice disconnect hatası:', disconnectError);
+            }
+            
+            // 2. DisTube voice manager'dan sil
+            try {
+                const voiceConnection = distube.voices.get(guildId);
+                if (voiceConnection) {
                     if (voiceConnection.connection) {
                         voiceConnection.connection.destroy();
                     }
-                    voiceConnection.audioPlayer.stop(true);
-                    console.log('🔌 Voice connection zorla kapatıldı');
-                } catch (voiceError) {
-                    console.error('Voice kapatma hatası:', voiceError);
+                    if (voiceConnection.audioPlayer) {
+                        voiceConnection.audioPlayer.stop(true);
+                    }
+                    distube.voices.collection.delete(guildId);
+                    console.log('🗑️ Voice connection tamamen yok edildi');
                 }
+            } catch (voiceError) {
+                console.error('Voice yok etme hatası:', voiceError);
             }
             
-            // Queue'yu tamamen yok et
+            // 3. Queue'yu tamamen yok et
             try {
-                const queue = distube.getQueue(channel.guild);
-                if (queue) {
-                    // Queue'yu collection'dan sil
+                distube.queues.collection.delete(guildId);
+                console.log('💀 Queue collection\'dan tamamen silindi');
+            } catch (queueError) {
+                console.error('Queue silme hatası:', queueError);
+            }
+            
+            // 4. Garbage collection zorla çalıştır
+            try {
+                if (global.gc) {
+                    global.gc();
+                    console.log('🧹 Garbage collection çalıştırıldı');
+                }
+            } catch (gcError) {
+                console.error('GC hatası:', gcError);
+            }
+            
+            // 5. 2 saniye bekle ve tekrar temizle
+            setTimeout(() => {
+                try {
                     distube.queues.collection.delete(guildId);
-                    console.log('🗑️ Queue collection\'dan silindi');
+                    distube.voices.collection.delete(guildId);
+                    console.log('🔄 Gecikmiş temizleme tamamlandı');
+                } catch (delayedError) {
+                    console.error('Gecikmiş temizleme hatası:', delayedError);
                 }
-            } catch (deleteError) {
-                console.error('Queue silme hatası:', deleteError);
-            }
+            }, 2000);
             
-            // Voice'u da sil
-            try {
-                distube.voices.collection.delete(guildId);
-                console.log('🔇 Voice collection\'dan silindi');
-            } catch (voiceDeleteError) {
-                console.error('Voice silme hatası:', voiceDeleteError);
-            }
+            console.log('💥 ULTRA AGRESİF TEMİZLEME TAMAMLANDI');
             
-            console.log('✅ Agresif temizleme tamamlandı');
+            // Kullanıcıya bilgi ver
+            channel.send('💥 **ULTRA TEMİZLEME YAPILDI!**\n🔥 Sistem tamamen sıfırlandı!\n⚡ `!destroy` komutuyla manuel temizleme yapabilirsiniz.\n🎵 Yeni müzik çalmayı deneyebilirsiniz.');
             
-        } catch (aggressiveError) {
-            console.error('❌ Agresif temizleme hatası:', aggressiveError);
-        }
-        
-        // Hata mesajları
-        if (error.message?.includes('410')) {
-            channel.send('❌ YouTube 410 hatası! Video mevcut değil. Sistem temizlendi.');
-        } else if (error.message?.includes('Access denied')) {
-            channel.send('❌ Erişim reddedildi! Video özel veya kısıtlı. Sistem temizlendi.');
-        } else if (error.message?.includes('Video unavailable')) {
-            channel.send('❌ Video mevcut değil! Sistem temizlendi.');
-        } else if (error.message?.includes('stream') || error.message?.includes('Stream')) {
-            channel.send('❌ Stream hatası! Sistem tamamen temizlendi, yeniden deneyin.');
-        } else if (error.message?.includes('queue') || error.message?.includes('Queue')) {
-            channel.send('❌ Queue hatası! Sistem tamamen sıfırlandı, yeniden deneyin.');
-        } else {
-            channel.send('❌ Kritik hata! Sistem tamamen temizlendi, yeniden deneyin.');
+        } catch (ultraError) {
+            console.error('❌ ULTRA AGRESİF TEMİZLEME HATASI:', ultraError);
+            channel.send('💀 **KRİTİK HATA!** Botu yeniden başlatın!');
         }
     })
     .on('empty', queue => {
@@ -518,65 +567,136 @@ process.on('uncaughtException', error => {
     console.error('Yakalanmamış istisna:', error);
 });
 
-// Periyodik agresif queue kontrolü (her 20 saniyede bir)
-setInterval(() => {
+// ULTRA AGRESİF Periyodik Queue Kontrolü (her 15 saniyede bir)
+setInterval(async () => {
     try {
-        const queues = distube.queues.collection;
-        const voices = distube.voices.collection;
+        console.log('💥 ULTRA AGRESİF QUEUE KONTROLÜ BAŞLATIYOR...');
         
-        queues.forEach((queue, guildId) => {
-            // Boş queue ama çalıyor durumunu kontrol et
-            if (queue.songs.length === 0 && (queue.playing || !queue.stopped)) {
-                console.log(`🔥 [${guildId}] Periyodik kontrol: Boş queue tespit edildi, agresif temizleme başlatılıyor...`);
-                
-                try {
-                    // Voice connection'ı zorla kapat
-                    const voiceConnection = voices.get(guildId);
-                    if (voiceConnection) {
-                        try {
-                            if (voiceConnection.connection) {
-                                voiceConnection.connection.destroy();
-                            }
-                            voiceConnection.audioPlayer.stop(true);
-                            console.log(`🔌 [${guildId}] Voice connection zorla kapatıldı`);
-                        } catch (voiceError) {
-                            console.error(`Voice kapatma hatası [${guildId}]:`, voiceError);
-                        }
-                    }
-                    
-                    // Queue'yu collection'dan tamamen sil
-                    queues.delete(guildId);
-                    voices.delete(guildId);
-                    
-                    console.log(`🗑️ [${guildId}] Queue ve Voice tamamen silindi`);
-                    
-                } catch (aggressiveError) {
-                    console.error(`❌ [${guildId}] Agresif temizleme hatası:`, aggressiveError);
+        // Tüm queue'ları kontrol et
+        const queuesToDelete = [];
+        const voicesToDelete = [];
+        
+        distube.queues.collection.forEach((queue, guildId) => {
+            try {
+                // Boş ama hala çalan queue'ları tespit et
+                if (queue.songs.length === 0 && (queue.playing || !queue.stopped)) {
+                    console.log(`🚨 PROBLEMLI QUEUE TESPİT EDİLDİ: ${guildId}`);
+                    queuesToDelete.push(guildId);
                 }
+                
+                // Çok uzun süredir aynı durumda kalan queue'ları tespit et
+                if (queue.songs.length === 0 && queue.playing === true && queue.stopped === false) {
+                    console.log(`💀 STUCK QUEUE TESPİT EDİLDİ: ${guildId}`);
+                    queuesToDelete.push(guildId);
+                }
+            } catch (queueError) {
+                console.error(`Queue kontrol hatası (${guildId}):`, queueError);
+                queuesToDelete.push(guildId);
             }
         });
         
-        // Orphaned voice connections'ları da temizle
-        voices.forEach((voice, guildId) => {
-            if (!queues.has(guildId)) {
-                console.log(`🧹 [${guildId}] Orphaned voice connection temizleniyor...`);
+        // Orphaned voice connection'ları tespit et
+        distube.voices.collection.forEach((voice, guildId) => {
+            try {
+                const queue = distube.queues.collection.get(guildId);
+                if (!queue) {
+                    console.log(`🧹 ORPHANED VOICE TESPİT EDİLDİ: ${guildId}`);
+                    voicesToDelete.push(guildId);
+                }
+            } catch (voiceError) {
+                console.error(`Voice kontrol hatası (${guildId}):`, voiceError);
+                voicesToDelete.push(guildId);
+            }
+        });
+        
+        // Problemli queue'ları ultra agresif şekilde temizle
+        for (const guildId of queuesToDelete) {
+            try {
+                console.log(`💥 ULTRA TEMİZLEME: ${guildId}`);
+                
+                // 1. Bot'u voice channel'dan ayır
                 try {
+                    const guild = client.guilds.cache.get(guildId);
+                    if (guild) {
+                        const botMember = guild.members.cache.get(client.user.id);
+                        if (botMember?.voice?.channel) {
+                            await botMember.voice.disconnect();
+                            console.log(`🔌 Bot voice'dan ayrıldı: ${guildId}`);
+                        }
+                    }
+                } catch (disconnectError) {
+                    console.error(`Disconnect hatası (${guildId}):`, disconnectError);
+                }
+                
+                // 2. Voice connection'ı yok et
+                const voiceConnection = distube.voices.get(guildId);
+                if (voiceConnection) {
+                    try {
+                        if (voiceConnection.connection) {
+                            voiceConnection.connection.destroy();
+                        }
+                        if (voiceConnection.audioPlayer) {
+                            voiceConnection.audioPlayer.stop(true);
+                        }
+                    } catch (voiceError) {
+                        console.error(`Voice yok etme hatası (${guildId}):`, voiceError);
+                    }
+                }
+                
+                // 3. Collection'lardan sil
+                distube.queues.collection.delete(guildId);
+                distube.voices.collection.delete(guildId);
+                
+                console.log(`✅ ULTRA TEMİZLEME TAMAMLANDI: ${guildId}`);
+                
+            } catch (cleanupError) {
+                console.error(`Ultra temizleme hatası (${guildId}):`, cleanupError);
+                // Yine de sil
+                distube.queues.collection.delete(guildId);
+                distube.voices.collection.delete(guildId);
+            }
+        }
+        
+        // Orphaned voice'ları temizle
+        for (const guildId of voicesToDelete) {
+            try {
+                const voice = distube.voices.get(guildId);
+                if (voice) {
                     if (voice.connection) {
                         voice.connection.destroy();
                     }
-                    voice.audioPlayer.stop(true);
-                    voices.delete(guildId);
-                    console.log(`✅ [${guildId}] Orphaned voice temizlendi`);
-                } catch (orphanError) {
-                    console.error(`❌ [${guildId}] Orphaned voice temizleme hatası:`, orphanError);
+                    if (voice.audioPlayer) {
+                        voice.audioPlayer.stop(true);
+                    }
                 }
+                distube.voices.collection.delete(guildId);
+                console.log(`🧹 Orphaned voice temizlendi: ${guildId}`);
+            } catch (voiceError) {
+                console.error(`Orphaned voice temizleme hatası (${guildId}):`, voiceError);
+                distube.voices.collection.delete(guildId);
             }
-        });
+        }
         
-    } catch (intervalError) {
-        console.error('Periyodik kontrol hatası:', intervalError);
+        // Garbage collection
+        try {
+            if (global.gc) {
+                global.gc();
+                console.log('🧹 Garbage collection çalıştırıldı');
+            }
+        } catch (gcError) {
+            console.error('GC hatası:', gcError);
+        }
+        
+        if (queuesToDelete.length > 0 || voicesToDelete.length > 0) {
+            console.log(`💥 ULTRA KONTROL TAMAMLANDI - Temizlenen: ${queuesToDelete.length} queue, ${voicesToDelete.length} voice`);
+        } else {
+            console.log('✅ Ultra kontrol tamamlandı - Temizleme gerekmedi');
+        }
+        
+    } catch (controlError) {
+        console.error('❌ ULTRA KONTROL HATASI:', controlError);
     }
-}, 20000); // 20 saniye
+}, 15000); // Her 15 saniyede bir
 
 // Bot'u başlat
 client.login(process.env.DISCORD_TOKEN);
