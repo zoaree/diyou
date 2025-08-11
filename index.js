@@ -9,13 +9,11 @@ const axios = require('axios');
 const ytdl = require('@distube/ytdl-core');
 require('dotenv').config();
 
-// Modern ytdl-core agent with Linux-optimized settings
+// Modern ytdl-core agent with undici-compatible settings
 const ytdlAgent = ytdl.createAgent(undefined, {
-    pipelining: 5,
+    pipelining: 0, // Use 0 instead of keepAlive for undici compatibility
     maxRedirections: 3,
     localAddress: undefined, // Let system choose best IP
-    keepAlive: true,
-    keepAliveMsecs: 1000,
     maxSockets: 15,
     maxFreeSockets: 10,
     timeout: 30000,
