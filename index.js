@@ -198,6 +198,15 @@ client.on('messageCreate', async (message) => {
                 const queue = distube.getQueue(message.guild);
                 if (!queue) return message.reply('❌ Kuyruk boş!');
                 
+                // Queue durumunu kontrol et
+                if (queue.songs.length === 0) {
+                    if (queue.playing) {
+                        console.log('🔧 Boş queue ama playing=true, düzeltiliyor...');
+                        distube.stop(message.guild);
+                    }
+                    return message.reply('❌ Kuyrukta şarkı yok!');
+                }
+                
                 const embed = new EmbedBuilder()
                     .setTitle('🎵 Müzik Kuyruğu')
                     .setColor('#FF6B6B')
@@ -206,10 +215,11 @@ client.on('messageCreate', async (message) => {
                             `${index === 0 ? '🎵 **Şu an çalıyor:**' : `${index}.`} [${song.name}](${song.url}) - \`${song.formattedDuration}\``
                         ).slice(0, 10).join('\n')
                     )
-                    .setFooter({ text: `Toplam ${queue.songs.length} şarkı` });
+                    .setFooter({ text: `Toplam ${queue.songs.length} şarkı | Durum: ${queue.playing ? 'Çalıyor' : 'Durduruldu'}` });
                 
                 message.reply({ embeds: [embed], components: [createMusicButtons()] });
             } catch (error) {
+                console.error('Queue hatası:', error);
                 message.reply('❌ Kuyruk gösterme hatası!');
             }
             break;
@@ -232,6 +242,51 @@ client.on('messageCreate', async (message) => {
             }
             break;
 
+        case 'clear':
+        case 'temizle':
+        case 'reset':
+            try {
+                const queue = distube.getQueue(message.guild);
+                if (queue) {
+                    distube.stop(message.guild);
+                    message.reply('🧹 Queue temizlendi ve müzik durduruldu!');
+                } else {
+                    message.reply('❌ Temizlenecek queue yok!');
+                }
+            } catch (error) {
+                console.error('Queue temizleme hatası:', error);
+                message.reply('❌ Queue temizleme hatası!');
+            }
+            break;
+
+        case 'status':
+        case 'durum':
+            try {
+                const queue = distube.getQueue(message.guild);
+                if (!queue) {
+                    return message.reply('❌ Aktif queue yok!');
+                }
+                
+                const statusEmbed = new EmbedBuilder()
+                    .setTitle('📊 Bot Durumu')
+                    .setColor('#00FF00')
+                    .addFields(
+                        { name: '🎵 Çalan Şarkı', value: queue.songs[0] ? queue.songs[0].name : 'Yok', inline: true },
+                        { name: '📋 Kuyruk', value: `${queue.songs.length} şarkı`, inline: true },
+                        { name: '▶️ Durum', value: queue.playing ? 'Çalıyor' : 'Durduruldu', inline: true },
+                        { name: '⏸️ Duraklama', value: queue.paused ? 'Evet' : 'Hayır', inline: true },
+                        { name: '🔊 Ses', value: `${queue.volume}%`, inline: true },
+                        { name: '🔄 Tekrar', value: queue.repeatMode === 0 ? 'Kapalı' : queue.repeatMode === 1 ? 'Şarkı' : 'Liste', inline: true }
+                    )
+                    .setFooter({ text: `Queue ID: ${queue.id}` });
+                
+                message.reply({ embeds: [statusEmbed] });
+            } catch (error) {
+                console.error('Durum kontrol hatası:', error);
+                message.reply('❌ Durum kontrol hatası!');
+            }
+            break;
+
         case 'help':
         case 'yardım':
             const helpEmbed = new EmbedBuilder()
@@ -239,6 +294,7 @@ client.on('messageCreate', async (message) => {
                 .setColor('#FF6B6B')
                 .addFields(
                     { name: '🎵 Müzik Komutları', value: '`!play <şarkı>` - Şarkı çal\n`!pause` - Duraklat\n`!resume` - Devam et\n`!skip` - Geç\n`!stop` - Durdur\n`!queue` - Kuyruğu göster\n`!volume <0-100>` - Ses seviyesi', inline: true },
+                    { name: '🔧 Sistem Komutları', value: '`!clear` - Queue temizle\n`!status` - Bot durumu\n`!help` - Bu yardım menüsü', inline: true },
                     { name: '🔥 Özellikler', value: '• YouTube, Spotify, SoundCloud desteği\n• Otomatik roast sistemi\n• Buton kontrolleri\n• Linux optimizasyonu\n• Gelişmiş hata yönetimi', inline: true }
                 )
                 .setFooter({ text: 'DisTube v5.0.7 - Linux Optimized' });
@@ -333,6 +389,19 @@ distube
     .on('error', (channel, error) => {
         console.error('🚨 DisTube hatası:', error);
         
+        // Queue durumunu kontrol et ve temizle
+        if (error.queue) {
+            try {
+                const queue = error.queue;
+                if (queue.songs.length === 0 && queue.playing) {
+                    console.log('🔧 Boş queue tespit edildi, durduruluyor...');
+                    distube.stop(queue.id);
+                }
+            } catch (queueError) {
+                console.error('Queue temizleme hatası:', queueError);
+            }
+        }
+        
         // Hata türüne göre özel mesajlar
         let errorMessage = '❌ Bir hata oluştu!';
         
@@ -346,6 +415,10 @@ distube
             errorMessage = '🔒 Bu video özel! Başka bir şarkı deneyin.';
         } else if (error.message.includes('age')) {
             errorMessage = '🔞 Yaş kısıtlaması! Başka bir şarkı deneyin.';
+        } else if (error.message.includes('stream')) {
+            errorMessage = '🌊 Stream hatası! Şarkı tekrar başlatılıyor...';
+        } else if (error.message.includes('queue')) {
+            errorMessage = '📋 Queue hatası! Sistem temizleniyor...';
         }
         
         if (channel) {
